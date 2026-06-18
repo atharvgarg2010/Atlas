@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Atlas — Application Settings
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-secret configuration only. Secrets (DATABASE_URL, API keys) go in .env
+# ─────────────────────────────────────────────────────────────────────────────
+
+app:
+  name: "Project Atlas"
+  version: "0.1.0"
+  description: "Autonomous AI Trading Research Platform"
+
+# ─── Market ───────────────────────────────────────────────────────────────────
+market:
+  exchange: "NSE"
+  history_days: 365
+  data_timeframes:
+    - "1d"
+  fetch_batch_size: 5          # symbols per yfinance batch call
+  fetch_delay_seconds: 1.0     # polite delay (seconds) between batches
+  min_valid_records: 50        # drop symbol if fewer valid rows returned
+
+  # NIFTY 50 universe (current composition, 2024)
+  watchlist:
+    - "ADANIENT.NS"
+    - "ADANIPORTS.NS"
+    - "APOLLOHOSP.NS"
+    - "ASIANPAINT.NS"
+    - "AXISBANK.NS"
+    - "BAJAJ-AUTO.NS"
+    - "BAJAJFINSV.NS"
+    - "BAJFINANCE.NS"
+    - "BHARTIARTL.NS"
+    - "BPCL.NS"
+    - "BRITANNIA.NS"
+    - "CIPLA.NS"
+    - "COALINDIA.NS"
+    - "DIVISLAB.NS"
+    - "DRREDDY.NS"
+    - "EICHERMOT.NS"
+    - "GRASIM.NS"
+    - "HCLTECH.NS"
+    - "HDFCBANK.NS"
+    - "HDFCLIFE.NS"
+    - "HEROMOTOCO.NS"
+    - "HINDALCO.NS"
+    - "HINDUNILVR.NS"
+    - "ICICIBANK.NS"
+    - "INDUSINDBK.NS"
+    - "INFY.NS"
+    - "ITC.NS"
+    - "JSWSTEEL.NS"
+    - "KOTAKBANK.NS"
+    - "LT.NS"
+    - "M&M.NS"
+    - "MARUTI.NS"
+    - "NESTLEIND.NS"
+    - "NTPC.NS"
+    - "ONGC.NS"
+    - "POWERGRID.NS"
+    - "RELIANCE.NS"
+    - "SBILIFE.NS"
+    - "SBIN.NS"
+    - "SHRIRAMFIN.NS"
+    - "SUNPHARMA.NS"
+    - "TATACONSUM.NS"
+    - "TATAMOTORS.NS"
+    - "TATASTEEL.NS"
+    - "TCS.NS"
+    - "TECHM.NS"
+    - "TITAN.NS"
+    - "TRENT.NS"
+    - "ULTRACEMCO.NS"
+    - "WIPRO.NS"
+
+# ─── Scheduler (Phase 2+) ─────────────────────────────────────────────────────
+scheduler:
+  market_data_interval_min: 15
+  indicator_interval_min: 15
+  news_interval_min: 15
+  sentiment_interval_min: 60    # runs hourly (FinBERT is heavy)
+  scoring_interval_min: 60
+  signal_interval_min: 60
+
+# ─── Paper Trading ────────────────────────────────────────────────────────────
+paper_trading:
+  initial_capital: 10000        # INR
+  position_size_pct: 0.10       # 10% of portfolio per trade
+  currency: "INR"
+
+# ─── Scoring Engine (Phase 2+) ────────────────────────────────────────────────
+scoring:
+  weight_profile: "default"
+  weights:
+    technical: 0.40
+    momentum: 0.30
+    news: 0.20
+    volume: 0.10

@@ -1,0 +1,59 @@
+# ─── Secrets ─────────────────────────────────────────────────────────────────
+.env
+*.pem
+*.key
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+
+# ─── Virtual Environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ─── Testing & Coverage ───────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+logs/*.log
+logs/*.log.*
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml but ignore local overrides
+docker-compose.override.yml
+
+# ─── Data ─────────────────────────────────────────────────────────────────────
+data/raw/
+data/cache/
+*.csv
+*.parquet
+*.pkl
+
+# ─── Research / Notebooks ─────────────────────────────────────────────────────
+research/**/*.ipynb
+.ipynb_checkpoints/
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Alembic ──────────────────────────────────────────────────────────────────
+# Keep migration files, ignore compiled artifacts
+database/migrations/__pycache__/

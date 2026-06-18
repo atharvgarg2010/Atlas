@@ -1,0 +1,2 @@
+# logs directory — runtime log files are written here
+# Log files are git-ignored (see .gitignore)

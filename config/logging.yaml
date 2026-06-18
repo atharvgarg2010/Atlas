@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Atlas — Logging Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# File paths are resolved at runtime by core/logging.py to absolute paths
+# under the logs/ directory. Use bare filenames here (no paths).
+#
+# Handler levels:
+#   console        → stdout, INFO+
+#   file           → logs/atlas.log, DEBUG+, rotating 10 MB
+#   error_file     → logs/atlas_errors.log, ERROR+, rotating 10 MB
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+disable_existing_loggers: false
+
+# ─── Formatters ───────────────────────────────────────────────────────────────
+formatters:
+  standard:
+    format: "%(asctime)s | %(levelname)-8s | %(name)-40s | %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  detailed:
+    format: "%(asctime)s | %(levelname)-8s | %(name)-40s | %(funcName)s:%(lineno)d | %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+# ─── Handlers ─────────────────────────────────────────────────────────────────
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: atlas.log          # resolved to logs/atlas.log at runtime
+    maxBytes: 10485760           # 10 MB
+    backupCount: 5
+    encoding: utf-8
+
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: detailed
+    filename: atlas_errors.log   # resolved to logs/atlas_errors.log at runtime
+    maxBytes: 10485760           # 10 MB
+    backupCount: 3
+    encoding: utf-8
+
+# ─── Named Loggers ────────────────────────────────────────────────────────────
+loggers:
+  # Main Atlas namespace — catches all atlas.* loggers
+  atlas:
+    level: DEBUG
+    handlers: [console, file, error_file]
+    propagate: false
+
+  # Suppress noisy SQLAlchemy query logs in production; echo=True handles dev
+  sqlalchemy.engine:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+
+  sqlalchemy.pool:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+
+  # APScheduler logs at INFO to console + file
+  apscheduler:
+    level: INFO
+    handlers: [console, file]
+    propagate: false
+
+# ─── Root Logger ──────────────────────────────────────────────────────────────
+root:
+  level: WARNING
+  handlers: [console]

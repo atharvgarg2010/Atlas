@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Atlas — Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   Start DB only (Sprint 1):      docker-compose up -d db
+#   Start full stack:              docker-compose up -d
+#   View logs:                     docker-compose logs -f
+#   Stop all:                      docker-compose down
+#   Destroy volumes (full reset):  docker-compose down -v
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL Database ────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: atlas_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas_secret
+      POSTGRES_DB: atlas
+    ports:
+      - "5432:5432"                  # expose to host for local psql access
+    volumes:
+      - atlas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Atlas Application ──────────────────────────────────────────────────────
+  app:
+    build:
+      context: ..                    # project root as build context
+      dockerfile: deployment/Dockerfile
+    container_name: atlas_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy   # wait for DB health check to pass
+    env_file:
+      - ../.env                      # mount secrets from project root .env
+    environment:
+      # Override DATABASE_URL to use Docker service name as host
+      DATABASE_URL: postgresql://atlas:atlas_secret@db:5432/atlas
+    volumes:
+      - ../logs:/app/logs            # persist logs to host
+    command: python main.py
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  atlas_pgdata:
+    driver: local
