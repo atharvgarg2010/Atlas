@@ -33,6 +33,7 @@ from __future__ import annotations
 import logging
 import logging.config
 import logging.handlers
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -68,6 +69,13 @@ def setup_logging(log_level: str | None = None) -> None:
     global _logging_configured
     if _logging_configured:
         return
+
+    # Force UTF-8 on stdout/stderr so Unicode log messages (e.g. ₹, →, ✓)
+    # never crash on Windows terminals that default to CP1252.
+    # Python 3.7+ supports reconfigure(); earlier versions use TextIOWrapper.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
     # Ensure the logs directory exists before handlers try to open files
     _LOGS_DIR.mkdir(parents=True, exist_ok=True)

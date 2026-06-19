@@ -9,13 +9,13 @@ sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
 alembic==1.13.1
 
-# ─── Data & Finance (active from Phase 2) ─────────────────────────────────────
+# ─── Data & Finance (Sprint 2) ────────────────────────────────────────────────
 pandas==2.2.2
 numpy==1.26.4
 yfinance==0.2.40
-ta==0.11.0
+ta==0.11.0               # Sprint 3 (indicators) — installed now for completeness
 
-# ─── Scheduling (active from Phase 2) ─────────────────────────────────────────
+# ─── Scheduling (active from Sprint 3) ────────────────────────────────────────
 apscheduler==3.10.4
 
 # ─── Machine Learning (active from Phase 3+) ──────────────────────────────────

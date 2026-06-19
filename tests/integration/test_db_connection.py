@@ -3,8 +3,11 @@ tests/integration/test_db_connection.py
 ========================================
 Integration tests for database connectivity.
 
-These tests require the Docker PostgreSQL container to be running:
-    docker-compose -f deployment/docker-compose.yml up -d db
+Requires a live Supabase PostgreSQL connection.
+Set DATABASE_URL in .env before running.
+
+Run with:
+    pytest tests/integration/test_db_connection.py -v -m integration
 """
 
 from __future__ import annotations

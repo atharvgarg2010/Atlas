@@ -68,3 +68,66 @@ Structured reasoning snapshot attached to a signal.
 
 Example: {'rsi': 58.2, 'macd_bullish': True, 'sentiment': 'positive'}
 """
+
+# ─── Ingestion Result ─────────────────────────────────────────────────────────
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class SymbolResult:
+    """
+    Outcome of processing a single symbol during a market data ingestion run.
+
+    Attributes
+    ----------
+    symbol:          NSE ticker that was processed.
+    rows_fetched:    Raw rows returned by yfinance before validation.
+    rows_valid:      Rows that passed all validation rules.
+    rows_rejected:   Rows that failed validation (dropped with warning).
+    rows_inserted:   Net new rows written to market_data (0 if all duplicates).
+    error:           Exception message if the symbol failed entirely, else None.
+    """
+
+    symbol: str
+    rows_fetched: int = 0
+    rows_valid: int = 0
+    rows_rejected: int = 0
+    rows_inserted: int = 0
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        """True if the symbol was processed without a fatal error."""
+        return self.error is None
+
+
+@dataclass
+class IngestReport:
+    """
+    Aggregate result of a full MarketDataService.run() call.
+
+    Attributes
+    ----------
+    total_symbols:   Number of symbols attempted.
+    succeeded:       Symbols with ok=True (even if 0 rows inserted).
+    failed:          Symbols that raised an unhandled exception.
+    total_fetched:   Sum of rows_fetched across all symbols.
+    total_inserted:  Sum of rows_inserted across all symbols (net new rows).
+    results:         Per-symbol SymbolResult list for detailed inspection.
+    """
+
+    total_symbols: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    total_fetched: int = 0
+    total_inserted: int = 0
+    results: list[SymbolResult] = field(default_factory=list)
+
+    def summary(self) -> str:
+        """Return a one-line human-readable summary for logging."""
+        return (
+            f"symbols={self.total_symbols} ok={self.succeeded} "
+            f"failed={self.failed} fetched={self.total_fetched} "
+            f"inserted={self.total_inserted}"
+        )

@@ -78,6 +78,9 @@ class MarketConfig:
     watchlist: tuple[str, ...] = ()
     data_timeframes: tuple[str, ...] = ("1d",)
     history_days: int = 365
+    fetch_batch_size: int = 5        # symbols per yfinance batch call
+    fetch_delay_seconds: float = 1.0 # polite delay between batches (seconds)
+    min_valid_records: int = 50      # drop symbol if fewer valid rows returned
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MarketConfig":
@@ -86,6 +89,9 @@ class MarketConfig:
             watchlist=tuple(data.get("watchlist", [])),
             data_timeframes=tuple(data.get("data_timeframes", ["1d"])),
             history_days=int(data.get("history_days", 365)),
+            fetch_batch_size=int(data.get("fetch_batch_size", 5)),
+            fetch_delay_seconds=float(data.get("fetch_delay_seconds", 1.0)),
+            min_valid_records=int(data.get("min_valid_records", 50)),
         )
 
 

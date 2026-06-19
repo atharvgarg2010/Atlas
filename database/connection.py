@@ -157,10 +157,10 @@ class DatabaseManager:
         try:
             with self._engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            logger.info("Database health check: PASSED ✓")
+            logger.info("Database health check: PASSED")
             return True
         except Exception as exc:
-            logger.critical(f"Database health check: FAILED — {exc}")
+            logger.critical(f"Database health check: FAILED - {exc}")
             raise DatabaseConnectionError(
                 "Cannot reach the database. "
                 "Check DATABASE_URL in .env and verify network/SSL settings."
