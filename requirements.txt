@@ -1,3 +1,7 @@
+# ─── Web & Visualization ──────────────────────────────────────────────────────
+plotly==5.22.0            # Visualization Engine v1 (analytics/technical/charts.py)
+streamlit==1.35.0         # Dashboard (Sprint 4)
+
 # ─── Core ─────────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
 pyyaml==6.0.1

@@ -1,108 +1,159 @@
 """
-Project Atlas — Entry Point (Sprint 2)
-=======================================
-Bootstraps config, logging, database, and runs the market data ingestion pipeline.
+Project Atlas — CLI Entry Point
+===============================
+Terminal-based quant research tool.
 
 Usage
 -----
-    python main.py
+    python main.py [SYMBOL]
+    python main.py -s [SYMBOL]
 
-Sprint 2 flow:
-    1. Load config from .env + settings.yaml
-    2. Setup logging (file + console)
-    3. Connect to Supabase PostgreSQL — health check (SELECT 1)
-    4. Run Alembic migrations to ensure tables exist
-    5. Run MarketDataService — ingest NIFTY 50 OHLCV data
-    6. Print IngestReport summary
+Example
+-------
+    python main.py HDFCBANK.NS
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
+from datetime import datetime, timedelta
+
+import pandas as pd
+import yfinance as yf
+
+from analytics.technical.indicators import IndicatorEngine
+from analytics.technical.strategies import StrategyEngine
+from analytics.technical.charts import plot_atlas_chart
+from core.logging import get_logger, setup_logging
+
+logger = get_logger(__name__)
+
+
+def setup_cli() -> argparse.Namespace:
+    """Configure and parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Atlas — Quantitative Trading Research System",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    
+    parser.add_argument(
+        "symbol_pos",
+        nargs="?",
+        help="Stock symbol to analyze (e.g. HDFCBANK.NS)",
+    )
+    
+    parser.add_argument(
+        "-s", "--symbol",
+        help="Stock symbol to analyze (e.g. HDFCBANK.NS)",
+    )
+    
+    # Future flags can easily be added here
+    # parser.add_argument("--backtest", action="store_true")
+    # parser.add_argument("--live", action="store_true")
+
+    args = parser.parse_args()
+    
+    # Allow both positional and flag-based symbol input
+    final_symbol = args.symbol_pos or args.symbol
+    
+    if not final_symbol:
+        parser.print_help()
+        sys.exit(1)
+        
+    args.final_symbol = final_symbol.upper()
+    return args
+
+
+def fetch_data(symbol: str, history_days: int = 365) -> pd.DataFrame:
+    """Fetch OHLCV data directly from yfinance for the CLI tool."""
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=history_days)
+    
+    logger.info(f"Fetching market data for {symbol}...")
+    
+    # Fetch data (suppress noisy progress bar)
+    df = yf.download(
+        tickers=symbol,
+        start=start_date.strftime("%Y-%m-%d"),
+        end=end_date.strftime("%Y-%m-%d"),
+        auto_adjust=True,
+        progress=False,
+    )
+    
+    return df
 
 
 def main() -> None:
-    """Bootstrap the Atlas platform and run Sprint 2 market data ingestion."""
-
-    # ── Step 1: Load config ────────────────────────────────────────────────
-    from config import get_settings
-    from core.exceptions import AtlasError, DatabaseConnectionError
-    from core.logging import get_logger, setup_logging
-
-    settings = get_settings()
-    setup_logging(log_level=settings.log_level)
-    logger = get_logger(__name__)
-
-    # ── Step 2: Print startup banner ───────────────────────────────────────
-    logger.info("=" * 60)
-    logger.info(f"  {settings.app_name}  |  v0.2.0  |  Sprint 2")
-    logger.info("=" * 60)
-    logger.info(f"  Environment     : {settings.app_env.upper()}")
-    logger.info(f"  Log Level       : {settings.log_level}")
-    logger.info(f"  Exchange        : {settings.market.exchange}")
-    logger.info(f"  Watchlist       : {len(settings.market.watchlist)} symbols (NIFTY 50)")
-    logger.info(f"  History         : {settings.market.history_days} days")
-    logger.info(f"  Paper Capital   : INR {settings.paper_trading.initial_capital:,.0f}")
-    logger.info(f"  Position Size   : {settings.paper_trading.position_size_pct * 100:.0f}% per trade")
-    logger.info("-" * 60)
-
-    # ── Step 3: Database health check ─────────────────────────────────────
-    from database.connection import init_db
-
+    """Main execution pipeline."""
+    # Ensure logs output to console in utf-8 to prevent Windows CP1252 crashes
+    setup_logging(log_level="INFO")
+    
+    args = setup_cli()
+    symbol = args.final_symbol
+    
     try:
-        db = init_db(
-            database_url=settings.database_url,
-            echo=False,  # keep SQL quiet — too noisy for 50-symbol ingestion
-        )
-        db.ping()
-        logger.info("  Database        : OK (Supabase PostgreSQL)")
-    except DatabaseConnectionError as exc:
-        logger.critical(f"  Database        : FAILED — {exc}")
-        logger.critical(
-            "  Check DATABASE_URL in .env — ensure it points to your Supabase "
-            "project with ?sslmode=require"
-        )
-        sys.exit(1)
-    except AtlasError as exc:
-        logger.critical(f"  Startup error   : {exc}")
-        sys.exit(1)
-
-    logger.info("=" * 60)
-    logger.info("  System check: PASSED — all systems operational")
-    logger.info("=" * 60)
-
-    # ── Step 4: Run market data ingestion ─────────────────────────────────
-    logger.info("")
-    logger.info("  Starting market data ingestion...")
-    logger.info("-" * 60)
-
-    try:
-        from services.market_data_service import MarketDataService
-
-        service = MarketDataService(db=db, settings=settings)
-        report = service.run()
-
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info("  INGESTION COMPLETE")
-        logger.info("=" * 60)
-        logger.info(f"  Symbols total   : {report.total_symbols}")
-        logger.info(f"  Succeeded       : {report.succeeded}")
-        logger.info(f"  Failed          : {report.failed}")
-        logger.info(f"  Rows fetched    : {report.total_fetched:,}")
-        logger.info(f"  Rows inserted   : {report.total_inserted:,}")
-        logger.info("=" * 60)
-
-        if report.failed > 0:
-            logger.warning(f"  {report.failed} symbols had errors:")
-            for r in report.results:
-                if not r.ok:
-                    logger.warning(f"    [FAIL] {r.symbol}: {r.error}")
-
-        sys.exit(0 if report.failed == 0 else 1)
-
+        # 1. Data Fetch
+        df = fetch_data(symbol)
+        
+        if df.empty:
+            logger.error(f"Invalid symbol or no data found for: {symbol}")
+            sys.exit(1)
+            
+        logger.info(f"Fetched {len(df)} rows of data.")
+        
+        # yfinance returns a MultiIndex column dataframe when fetching a single ticker in newer versions,
+        # or single level depending on the version. Let's flatten it safely.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        # Clean up column names to match what IndicatorEngine expects
+        df = df.rename(columns={
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+        })
+        
+        # The index is the timestamp
+        df = df.reset_index()
+        df = df.rename(columns={"Date": "timestamp", "Datetime": "timestamp"})
+        
+        # Convert to list of dicts
+        raw_candles = df.to_dict(orient="records")
+        
+        # 2. Indicator Engine
+        logger.info("Computing indicators...")
+        engine = IndicatorEngine()
+        enriched_candles = engine.enrich(raw_candles)
+        
+        # 3. Strategy Engine
+        logger.info("Evaluating trading strategies (EMA Crossover)...")
+        strategy = StrategyEngine(strategy_name="EMA_CROSSOVER")
+        signals = strategy.generate_signals(enriched_candles)
+        
+        # Merge signals back into candles for visualization and print summary
+        signal_count = 0
+        for i, candle in enumerate(enriched_candles):
+            sig_dict = signals[i]
+            candle["signal"] = sig_dict["signal"]
+            
+            if sig_dict["signal"] in ("BUY", "SELL"):
+                signal_count += 1
+                logger.info(f"  --> {sig_dict['signal']} SIGNAL at {sig_dict['timestamp'].strftime('%Y-%m-%d')}: {sig_dict['reason']}")
+                
+        logger.info(f"Generated {signal_count} total signals over the period.")
+        
+        # 4. Visualization Engine
+        logger.info("Generating visualization...")
+        fig = plot_atlas_chart(enriched_candles, symbol=symbol)
+        
+        logger.info("Opening chart in browser...")
+        fig.show()
+        
     except Exception as exc:
-        logger.critical(f"  Ingestion crashed: {exc}", exc_info=True)
+        logger.critical(f"Pipeline failed: {exc}", exc_info=True)
         sys.exit(1)
 
 
