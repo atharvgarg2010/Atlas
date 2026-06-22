@@ -6,14 +6,15 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 class PortfolioOptimizer:
-    def __init__(self, historical_prices: pd.DataFrame, factor_scores: pd.Series, risk_free_rate: float = 0.05):
+    def __init__(self, historical_prices: pd.DataFrame, factor_scores: pd.Series, risk_free_rate: float = 0.05, is_ml_expected_returns: bool = False):
         """
         Initialize the PortfolioOptimizer.
         
         Args:
             historical_prices: DataFrame where index is dates and columns are symbols with closing prices.
-            factor_scores: Series where index is symbols and values are Composite Factor Scores (0-100).
+            factor_scores: Series where index is symbols and values are Composite Factor Scores (0-100) OR predicted expected returns.
             risk_free_rate: Annualized risk-free rate.
+            is_ml_expected_returns: If True, factor_scores are raw expected returns and skip the heuristic mapping.
         """
         self.symbols = list(factor_scores.index)
         
@@ -26,9 +27,13 @@ class PortfolioOptimizer:
         self.cov_matrix = self.returns.cov() * 252
         self.corr_matrix = self.returns.corr()
         
-        # Map factor scores to expected returns (0 to 100 maps to -10% to +25%)
-        # R = -0.10 + (score / 100) * 0.35
-        self.expected_returns = -0.10 + (factor_scores / 100.0) * 0.35
+        if is_ml_expected_returns:
+            # factor_scores are already raw expected returns directly from the XGBoost model
+            self.expected_returns = factor_scores
+        else:
+            # Map factor scores to expected returns (0 to 100 maps to -10% to +25%)
+            # R = -0.10 + (score / 100) * 0.35
+            self.expected_returns = -0.10 + (factor_scores / 100.0) * 0.35
         
         self.rfr = risk_free_rate
         self.n = len(self.symbols)

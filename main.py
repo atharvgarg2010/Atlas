@@ -130,6 +130,31 @@ def setup_cli() -> argparse.Namespace:
         choices=["equal", "minvar", "maxsharpe", "riskparity"],
         help="Weighting scheme for portfolio optimization and factor backtest.",
     )
+    parser.add_argument(
+        "--build-dataset",
+        action="store_true",
+        help="Build ML training dataset.",
+    )
+    parser.add_argument(
+        "--validate-dataset",
+        action="store_true",
+        help="Generate dataset analysis report.",
+    )
+    parser.add_argument(
+        "--train-model",
+        action="store_true",
+        help="Train the XGBoost Regressor model.",
+    )
+    parser.add_argument(
+        "--predict-universe",
+        action="store_true",
+        help="Run ML predictions for the current universe.",
+    )
+    parser.add_argument(
+        "--ml-backtest",
+        action="store_true",
+        help="Run portfolio backtest using ML expected returns.",
+    )
     # ── Cache Management Commands ──
     parser.add_argument(
         "--sync-symbol",
@@ -153,12 +178,37 @@ def setup_cli() -> argparse.Namespace:
         action="store_true",
         help="Show statistics for the Supabase OHLCV cache.",
     )
+    # ── Phase 4.1 Commands ──
+    parser.add_argument(
+        "--show-db-stats",
+        action="store_true",
+        help="Show comprehensive database statistics and save to report.",
+    )
+    parser.add_argument(
+        "--backfill-history",
+        action="store_true",
+        help="Run incremental backward fetch for historical data coverage.",
+    )
+    parser.add_argument(
+        "--years",
+        type=int,
+        default=5,
+        help="Years of historical coverage to target during backfill.",
+    )
+    parser.add_argument(
+        "--coverage-report",
+        action="store_true",
+        help="Generate Dataset_Coverage_Report.md.",
+    )
 
     args = parser.parse_args()
 
     if (args.reset_balance is not None or args.status or args.portfolio 
         or args.sync_symbol or args.sync_universe or args.sync_all or args.cache_status
-        or args.rank_universe or args.factor_backtest or args.optimize_portfolio):
+        or args.rank_universe or args.factor_backtest or args.optimize_portfolio
+        or args.build_dataset or args.validate_dataset or args.train_model
+        or args.predict_universe or args.ml_backtest or args.show_db_stats
+        or args.backfill_history or args.coverage_report):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -229,6 +279,79 @@ def main() -> None:
         results = dm.sync_universe(active_symbols, max_workers=5)
         success_count = sum(1 for v in results.values() if v)
         logger.info(f"Sync-all complete. Successful: {success_count}/{len(active_symbols)}")
+        sys.exit(0)
+
+    # ── Handle Phase 4.1 Commands ─────────────────────────────────────────────
+    if args.show_db_stats:
+        from sqlalchemy import select, func
+        from database.models.market_data import MarketData, MarketIndicators, SymbolMetadata
+        from datetime import date
+        out_dir = Path(__file__).parent / "research" / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        report_path = out_dir / "Database_Statistics_Report.md"
+        
+        dm = DataManager()
+        with dm.db.session() as s:
+            min_date = s.scalar(select(func.min(MarketData.date)))
+            max_date = s.scalar(select(func.max(MarketData.date)))
+            total_md = s.scalar(select(func.count(MarketData.id)))
+            total_ind = s.scalar(select(func.count(MarketIndicators.id)))
+            
+            active_symbols = s.scalars(select(SymbolMetadata.symbol).where(SymbolMetadata.status == "ACTIVE")).all()
+            total_symbols = len(active_symbols)
+            
+            avg_coverage = (total_md / total_symbols) if total_symbols > 0 else 0
+            
+            with open(report_path, "w") as f:
+                f.write("# Atlas Database Statistics Report\n\n")
+                f.write(f"**Generated on:** {date.today()}\n\n")
+                f.write("## Global Bounds\n")
+                f.write(f"- **Earliest Date in DB:** {min_date}\n")
+                f.write(f"- **Latest Date in DB:** {max_date}\n\n")
+                f.write("## Volume & Coverage\n")
+                f.write(f"- **Symbols Covered (ACTIVE):** {total_symbols}\n")
+                f.write(f"- **Total `market_data` Rows:** {total_md:,}\n")
+                f.write(f"- **Total `market_indicators` Rows:** {total_ind:,}\n")
+                f.write(f"- **Average Rows per Symbol:** {avg_coverage:,.0f}\n")
+                
+        logger.info(f"Database Statistics Report generated at: {report_path}")
+        print(f"Earliest Date: {min_date}")
+        print(f"Latest Date: {max_date}")
+        print(f"Total Rows: {total_md:,}")
+        print(f"Symbols Covered: {total_symbols}")
+        sys.exit(0)
+
+    if args.backfill_history:
+        from data.backfill_manager import BackfillManager
+        manager = BackfillManager()
+        
+        # NIFTY 100 List
+        nifty100 = [
+            "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS", "INFY.NS", "ITC.NS", "HINDUNILVR.NS",
+            "LT.NS", "SBIN.NS", "BAJFINANCE.NS", "MARUTI.NS", "M&M.NS", "HCLTECH.NS", "TATAMOTORS.NS", "SUNPHARMA.NS",
+            "TATASTEEL.NS", "POWERGRID.NS", "NTPC.NS", "KOTAKBANK.NS", "AXISBANK.NS", "ONGC.NS", "ULTRACEMCO.NS", "TITAN.NS",
+            "ASIANPAINT.NS", "BAJAJFINSV.NS", "WIPRO.NS", "NESTLEIND.NS", "ADANIENT.NS", "ADANIPORTS.NS", "COALINDIA.NS",
+            "DRREDDY.NS", "TECHM.NS", "HINDALCO.NS", "TRENT.NS", "BRITANNIA.NS", "APOLLOHOSP.NS", "GRASIM.NS", "BAJAJ-AUTO.NS",
+            "INDUSINDBK.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "TATACONSUM.NS", "CIPLA.NS", "DIVISLAB.NS", "BPCL.NS",
+            "SHRIRAMFIN.NS", "SBILIFE.NS", "HDFCLIFE.NS", "LTIM.NS", "BEL.NS", "HAL.NS", "CHOLAFIN.NS", "TVSMOTOR.NS",
+            "INDIGO.NS", "ZOMATO.NS", "DLF.NS", "VBL.NS", "JINDALSTEL.NS", "JSWSTEEL.NS", "TORNTPHARM.NS", "PIDILITIND.NS",
+            "GODREJCP.NS", "MAXHEALTH.NS", "BOSCHLTD.NS", "CGPOWER.NS", "CUMMINSIND.NS", "LODHA.NS", "TIINDIA.NS", "TRENT.NS",
+            "AMBUJACEM.NS", "SHREECEM.NS", "PNB.NS", "BANKBARODA.NS", "IOB.NS", "UNIONBANK.NS", "CANBK.NS", "IDBI.NS",
+            "GAIL.NS", "IOC.NS", "IRFC.NS", "PFC.NS", "RECLTD.NS", "ADANIPOWER.NS", "TATAPOWER.NS", "ZENTEC.NS", "UBL.NS",
+            "MARICO.NS", "DABUR.NS", "HAVELLS.NS", "VOLTAS.NS", "DIXON.NS", "PIIND.NS", "AUBANK.NS", "TATACOMM.NS", "OFSS.NS",
+            "NAUKRI.NS", "ICICIPRULI.NS", "ICICIGI.NS", "HDFCAMC.NS", "^NSEI"
+        ]
+        
+        # Keep unique
+        symbols = list(set(nifty100))
+        logger.info(f"Initiating backfill for NIFTY100 universe ({len(symbols)} symbols) targeting {args.years} years...")
+        manager.backfill_universe(symbols, years=args.years, max_workers=5)
+        sys.exit(0)
+        
+    if args.coverage_report:
+        from analytics.ml.coverage_report import CoverageReporter
+        reporter = CoverageReporter()
+        reporter.generate_report()
         sys.exit(0)
 
     # ── Handle Balance Reset ──────────────────────────────────────────────────
@@ -311,7 +434,128 @@ def main() -> None:
             logger.error(f"Factor backtest failed: {e}", exc_info=True)
         sys.exit(0)
 
-    if args.optimize_portfolio:
+    if args.ml_backtest:
+        from analytics.backtesting.factor_backtest import FactorBacktestEngine
+        end_date = date.today()
+        start_date = end_date - timedelta(days=args.days)
+        engine = FactorBacktestEngine(initial_balance=args.capital or 100_000.0, top_n=args.top, weighting_scheme=args.weighting, use_ml=True)
+        try:
+            result = engine.run(start_date=start_date, end_date=end_date)
+            logger.info("=== ML Backtest Complete ===")
+            print("\nStrategy Metrics (ML Engine):")
+            for k, v in result['strategy'].items():
+                if isinstance(v, float):
+                    print(f"  {k}: {v:.2f}")
+                else:
+                    print(f"  {k}: {v}")
+            print("\nBenchmark Metrics (^NSEI Buy & Hold):")
+            for k, v in result['benchmark'].items():
+                if isinstance(v, float):
+                    print(f"  {k}: {v:.2f}")
+                else:
+                    print(f"  {k}: {v}")
+            
+            if result['turnover_stats']:
+                avg_turnover = sum(t['turnover_pct'] for t in result['turnover_stats']) / len(result['turnover_stats'])
+                print(f"\nAverage Monthly Turnover: {avg_turnover:.2f}%")
+        except Exception as e:
+            logger.error(f"ML backtest failed: {e}", exc_info=True)
+        sys.exit(0)
+        
+    if args.build_dataset:
+        from analytics.ml.dataset_builder import DatasetBuilder
+        builder = DatasetBuilder()
+        builder.build_and_save()
+        sys.exit(0)
+        
+    if args.validate_dataset:
+        from analytics.ml.data_validation import DataValidator
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        parquet_files = list(datasets_dir.glob("*.parquet"))
+        if not parquet_files:
+            logger.error("No dataset found to validate.")
+            sys.exit(1)
+        latest_dataset = sorted(parquet_files)[-1]
+        validator = DataValidator(latest_dataset)
+        validator.run_validation()
+        sys.exit(0)
+        
+    if args.train_model:
+        from analytics.ml.train_model import ModelTrainer
+        from analytics.ml.explainability import ModelExplainer
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        parquet_files = list(datasets_dir.glob("*.parquet"))
+        if not parquet_files:
+            logger.error("No dataset found to train on.")
+            sys.exit(1)
+        latest_dataset = sorted(parquet_files)[-1]
+        
+        trainer = ModelTrainer(latest_dataset)
+        registry_entry = trainer.run_training()
+        
+        explainer = ModelExplainer(registry_entry, latest_dataset)
+        explainer.generate_importance_report()
+        sys.exit(0)
+        
+    if args.predict_universe:
+        from analytics.ml.predictor import AlphaPredictor
+        from analytics.ml.dataset_builder import DatasetBuilder
+        from datetime import date
+        
+        builder = DatasetBuilder()
+        features_df = builder.build_features_df(end_date=date.today())
+        if features_df.empty:
+            logger.error("No features available.")
+            sys.exit(1)
+            
+        today_features = features_df[features_df['date'] == features_df['date'].max()]
+        if today_features.empty:
+            logger.error("No features available for today.")
+            sys.exit(1)
+            
+        predictor = AlphaPredictor()
+        preds = predictor.predict(today_features)
+        preds = preds.sort_values('predicted_rank')
+        
+        logger.info("=== ATLAS ML PREDICTIONS (Top 10) ===")
+        top_10 = preds.head(args.top)[['predicted_rank', 'symbol', 'predicted_return']]
+        print(top_10.to_string(index=False))
+        
+        from analytics.ml.explainability import ModelExplainer
+        with open(Path(__file__).parent / "models" / "model_registry.json", 'r') as f:
+            registry = json.load(f)
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        latest_dataset = sorted(datasets_dir.glob("*.parquet"))[-1]
+        explainer = ModelExplainer(registry[0], latest_dataset)
+        
+        top_row = preds.iloc[0]
+        drivers, reasons = explainer.explain_prediction(top_row[predictor.features])
+        
+        logger.info(f"\nWhy Atlas likes {top_row['symbol']} (Predicted Return: {top_row['predicted_return']*100:.2f}%):")
+        for reason in reasons:
+            logger.info(f" - {reason}")
+            
+        # Write to Report
+        out_dir = Path(__file__).parent / "research" / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        report_path = out_dir / "Alpha_Prediction_Report.md"
+        with open(report_path, "w") as f:
+            f.write(f"# Atlas ML Alpha Prediction Report\n")
+            f.write(f"Generated on: {date.today()}\n\n")
+            f.write(f"## Top {args.top} Predicted Returns\n\n")
+            f.write("| Rank | Symbol | Predicted Return | Expected Return % |\n")
+            f.write("|------|--------|------------------|-------------------|\n")
+            for _, row in top_10.iterrows():
+                f.write(f"| {int(row['predicted_rank'])} | {row['symbol']} | {row['predicted_return']:.4f} | {row['predicted_return']*100:.2f}% |\n")
+                
+            f.write(f"\n## Explainability for Top Pick ({top_row['symbol']})\n\n")
+            f.write(f"**Predicted Return:** {top_row['predicted_return']*100:.2f}%\n\n")
+            for reason in reasons:
+                f.write(f"- {reason}\n")
+                
+        logger.info(f"Alpha Prediction Report saved to: {report_path}")
+        sys.exit(0)
+
         from analytics.factors.factor_engine import FactorEngine
         from analytics.portfolio.optimizer import PortfolioOptimizer
         from analytics.portfolio.portfolio_report import generate_optimization_report

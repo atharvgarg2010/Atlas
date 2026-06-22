@@ -1,0 +1,33 @@
+[
+    {
+        "dataset_version": "atlas_dataset_v20260622",
+        "created_at": "2026-06-22T19:25:00.347159",
+        "symbols": 97,
+        "date_start": "2022-04-08",
+        "date_end": "2026-06-22",
+        "rows": 100446,
+        "valid_training_rows": 98505,
+        "feature_count": 19,
+        "features": [
+            "close",
+            "momentum_score",
+            "trend_score",
+            "rs_score",
+            "volatility_score",
+            "liquidity_score",
+            "composite_score",
+            "rsi_14",
+            "macd",
+            "macd_signal",
+            "atr_14",
+            "ema20_dist",
+            "ema50_dist",
+            "ema200_dist",
+            "daily_volatility",
+            "avg_volume_30",
+            "ret_1m",
+            "ret_3m",
+            "ret_6m"
+        ]
+    }
+]
