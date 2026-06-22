@@ -28,8 +28,13 @@ import yfinance as yf
 from analytics.technical.indicators import IndicatorEngine
 from analytics.technical.strategies import StrategyEngine
 from analytics.technical.charts import plot_atlas_chart
-from analytics.backtesting.backtest_engine import BacktestEngine
+from analytics.backtesting.backtest_engine import PortfolioBacktestEngine
+from analytics.portfolio.portfolio_engine import PortfolioManager
+from analytics.portfolio.portfolio_charts import plot_portfolio_chart
 from core.logging import get_logger, setup_logging
+from config.settings import get_settings
+from database.connection import init_db
+from data.data_manager import DataManager
 
 logger = get_logger(__name__)
 
@@ -81,10 +86,50 @@ def setup_cli() -> argparse.Namespace:
         default=365,
         help="Number of historical days to fetch (default: 365)",
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Check current paper trading balance and log file locations.",
+    )
+    parser.add_argument(
+        "--portfolio",
+        action="store_true",
+        help="Run multi-stock portfolio simulation mode.",
+    )
+    parser.add_argument(
+        "--universe",
+        type=str,
+        default=None,
+        help="Comma-separated NSE symbols for portfolio mode (e.g. HDFCBANK.NS,TCS.NS,TITAN.NS).",
+    )
+    # ── Cache Management Commands ──
+    parser.add_argument(
+        "--sync-symbol",
+        type=str,
+        default=None,
+        help="Sync a single symbol to the Supabase cache (e.g. RELIANCE.NS).",
+    )
+    parser.add_argument(
+        "--sync-universe",
+        type=str,
+        default=None,
+        help="Comma-separated symbols to sync concurrently to the cache.",
+    )
+    parser.add_argument(
+        "--sync-all",
+        action="store_true",
+        help="Sync all symbols currently marked as ACTIVE in the cache metadata.",
+    )
+    parser.add_argument(
+        "--cache-status",
+        action="store_true",
+        help="Show statistics for the Supabase OHLCV cache.",
+    )
 
     args = parser.parse_args()
 
-    if args.reset_balance is not None:
+    if (args.reset_balance is not None or args.status or args.portfolio 
+        or args.sync_symbol or args.sync_universe or args.sync_all or args.cache_status):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -96,39 +141,7 @@ def setup_cli() -> argparse.Namespace:
     return args
 
 
-# ─── Data Fetch ───────────────────────────────────────────────────────────────
-
-def fetch_data(symbol: str, history_days: int = 365) -> pd.DataFrame:
-    """Fetch OHLCV data from yfinance for the given symbol."""
-    end_date   = datetime.now()
-    start_date = end_date - timedelta(days=history_days)
-
-    logger.info(f"Fetching market data for {symbol}...")
-
-    df = yf.download(
-        tickers=symbol,
-        start=start_date.strftime("%Y-%m-%d"),
-        end=end_date.strftime("%Y-%m-%d"),
-        auto_adjust=True,
-        progress=False,
-    )
-    return df
-
-
-def dataframe_to_candles(df: pd.DataFrame) -> list[dict]:
-    """Normalise a yfinance DataFrame into the Atlas candle list[dict] format."""
-    # Flatten MultiIndex columns (yfinance 0.2+ sometimes returns these)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    df = df.rename(columns={
-        "Open": "open", "High": "high",
-        "Low": "low",  "Close": "close", "Volume": "volume",
-    })
-    df = df.reset_index()
-    df = df.rename(columns={"Date": "timestamp", "Datetime": "timestamp"})
-
-    return df.to_dict(orient="records")
+# ─── Removed fetch_data in favour of DataManager ──────────────────────────────
 
 
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
@@ -137,11 +150,64 @@ def main() -> None:
     """Execute the full Atlas analysis pipeline."""
     setup_logging(log_level="INFO")
 
+    # Initialize Database Connection
+    settings = get_settings()
+    init_db(settings.database_url, echo=False)
+
     args = setup_cli()
     
+    # ── Handle Cache Management ───────────────────────────────────────────────
+    if args.cache_status:
+        dm = DataManager()
+        stats = dm.get_cache_status()
+        logger.info("=== Supabase Market Data Cache Status ===")
+        for k, v in stats.items():
+            logger.info(f"{k}: {v}")
+        sys.exit(0)
+
+    if args.sync_symbol:
+        dm = DataManager()
+        sym = args.sync_symbol.upper()
+        logger.info(f"Syncing {sym} to Supabase cache...")
+        success = dm.sync_symbol(sym, force=True)
+        if success:
+            logger.info(f"Successfully synced {sym}.")
+        else:
+            logger.error(f"Failed to sync {sym}.")
+        sys.exit(0)
+
+    if args.sync_universe:
+        dm = DataManager()
+        symbols = [s.strip().upper() for s in args.sync_universe.split(",") if s.strip()]
+        logger.info(f"Syncing universe to Supabase cache: {symbols}")
+        results = dm.sync_universe(symbols, max_workers=5)
+        success_count = sum(1 for v in results.values() if v)
+        logger.info(f"Universe sync complete. Successful: {success_count}/{len(symbols)}")
+        sys.exit(0)
+
+    if args.sync_all:
+        dm = DataManager()
+        with dm.db.session() as s:
+            from database.models.market_data import SymbolMetadata
+            from sqlalchemy import select
+            active_symbols = s.scalars(select(SymbolMetadata.symbol).where(SymbolMetadata.status == "ACTIVE")).all()
+        
+        if not active_symbols:
+            logger.warning("No ACTIVE symbols found in cache to sync.")
+            sys.exit(0)
+            
+        logger.info(f"Syncing all {len(active_symbols)} ACTIVE symbols to Supabase cache...")
+        results = dm.sync_universe(active_symbols, max_workers=5)
+        success_count = sum(1 for v in results.values() if v)
+        logger.info(f"Sync-all complete. Successful: {success_count}/{len(active_symbols)}")
+        sys.exit(0)
+
     # ── Handle Balance Reset ──────────────────────────────────────────────────
+    state_file = Path(__file__).parent / "research" / "output" / "portfolio_state.json"
+    csv_path   = Path(__file__).parent / "research" / "output" / "Log.csv"
+    md_path    = Path(__file__).parent / "research" / "output" / "Backtest_Report.md"
+
     if args.reset_balance is not None:
-        state_file = Path(__file__).parent / "research" / "output" / "portfolio_state.json"
         state_file.parent.mkdir(parents=True, exist_ok=True)
         with open(state_file, "w") as f:
             json.dump({"balance": args.reset_balance, "last_updated": datetime.now().isoformat()}, f)
@@ -149,23 +215,80 @@ def main() -> None:
         logger.info("Historical trade logs (Log.csv) have been preserved.")
         sys.exit(0)
 
+    # ── Handle Status Check ───────────────────────────────────────────────────
+    if args.status:
+        balance = 100_000.0
+        if state_file.exists():
+            with open(state_file, "r") as f:
+                try:
+                    balance = json.load(f).get("balance", 100_000.0)
+                except json.JSONDecodeError:
+                    pass
+        
+        logger.info(f"Current Paper Trading Balance: INR {balance:,.2f}")
+        
+        if csv_path.exists():
+            logger.info(f"Trade Log (CSV) path     : {csv_path.resolve()}")
+        else:
+            logger.info("Trade Log (CSV)          : No logs generated yet.")
+            
+        if md_path.exists():
+            logger.info(f"Backtest Report (MD) path: {md_path.resolve()}")
+            
+        sys.exit(0)
+
+    # ── Handle Portfolio Mode ──────────────────────────────────────────────
+    if args.portfolio:
+        if not args.universe:
+            logger.error("--portfolio requires --universe  e.g. --universe HDFCBANK.NS,TCS.NS,TITAN.NS")
+            sys.exit(1)
+
+        symbols = [s.strip().upper() for s in args.universe.split(",") if s.strip()]
+        if len(symbols) < 2:
+            logger.error("--universe must contain at least 2 symbols.")
+            sys.exit(1)
+
+        initial_capital = args.capital if args.capital else 100_000.0
+        logger.info(f"Starting Portfolio Simulation: {len(symbols)} stocks, INR {initial_capital:,.0f}")
+
+        try:
+            manager = PortfolioManager(
+                entry_fraction = 0.25,
+                exit_fraction  = 0.50,
+                history_days   = args.days,
+            )
+            report = manager.run(symbols=symbols, initial_capital=initial_capital)
+            report.print_summary()
+
+            # Export CSVs
+            out_dir   = Path(__file__).parent / "research" / "output"
+            written   = report.to_csv(out_dir)
+            logger.info(f"Portfolio summary  : {written['summary']}")
+            logger.info(f"Unified trade log  : {written['trades']}")
+            logger.info(f"Portfolio equity   : {written['equity']}")
+
+            # Visualization
+            logger.info("Generating portfolio dashboard...")
+            fig = plot_portfolio_chart(report)
+            logger.info("Opening dashboard in browser...")
+            fig.show()
+
+        except Exception as exc:
+            logger.critical(f"Portfolio simulation failed: {exc}", exc_info=True)
+            sys.exit(1)
+
+        sys.exit(0)
+
     symbol = args.final_symbol
 
     try:
-        # ── 1. Data Fetch ─────────────────────────────────────────────────────
-        df = fetch_data(symbol, history_days=args.days)
-
-        if df.empty:
-            logger.error(f"Invalid symbol or no data found for: {symbol}")
+        # 1. Load Data from Supabase Cache
+        dm = DataManager()
+        enriched_candles = dm.get_market_data(symbol, history_days=args.days)
+        if not enriched_candles:
+            logger.critical(f"No market data available for {symbol}")
             sys.exit(1)
-
-        logger.info(f"Fetched {len(df)} candles.")
-        raw_candles = dataframe_to_candles(df)
-
-        # ── 2. Indicator Engine ───────────────────────────────────────────────
-        logger.info("Computing indicators...")
-        enriched_candles = IndicatorEngine().enrich(raw_candles)
-
+        
         # ── 3. Strategy Engine ────────────────────────────────────────────────
         logger.info(f"Evaluating strategy: {args.strategy}...")
         strategy = StrategyEngine(strategy_name=args.strategy)
@@ -189,6 +312,7 @@ def main() -> None:
         logger.info(f"Generated {signal_count} actionable signals.")
 
         # ── 4. Backtest Engine (optional) ─────────────────────────────────────
+        backtest_result = None
         if args.backtest:
             # Manage Portfolio State
             state_file = Path(__file__).parent / "research" / "output" / "portfolio_state.json"
@@ -207,37 +331,54 @@ def main() -> None:
                         pass
                         
             logger.info(
-                f"Running backtest simulation "
-                f"(capital=INR {initial_balance:,.2f}, strategy={args.strategy})..."
+                f"Running portfolio simulation "
+                f"(capital=INR {initial_balance:,.2f}, strategy={args.strategy}, "
+                f"entry=25% cash, exit=50% holdings)..."
             )
-            engine = BacktestEngine(
-                initial_balance=initial_balance,
-                position_size_pct=0.10,
+            engine = PortfolioBacktestEngine(
+                initial_balance    = initial_balance,
+                entry_fraction     = 0.25,   # invest 25% of cash per BUY
+                exit_fraction      = 0.50,   # sell 50% of holdings per SELL
+                min_position_value = 500.0,
             )
-            result = engine.run(candles=enriched_candles, signals=signals)
+            result = engine.run(
+                candles = enriched_candles,
+                signals = signals,
+                symbol  = symbol,
+            )
 
             # Print metrics
             result.print_summary()
+            backtest_result = result
             
-            # Save new balance state
+            # Save updated balance (use final_portfolio_value for persistence)
             with open(state_file, "w") as f:
-                json.dump({"balance": result.final_balance, "last_updated": datetime.now().isoformat()}, f)
-            
-            logger.info(f"Updated paper trading balance to: INR {result.final_balance:,.2f}")
+                json.dump({"balance": result.final_portfolio_value, "last_updated": datetime.now().isoformat()}, f)
+            logger.info(f"Portfolio value saved: INR {result.final_portfolio_value:,.2f}")
 
-            # Export CSV
+            # Export CSV and MD
             csv_dir  = Path(__file__).parent / "research" / "output"
             csv_path = csv_dir / "Log.csv"
             md_path  = csv_dir / "Backtest_Report.md"
-            
-            written_csv  = result.to_csv(csv_path, symbol=symbol)
-            written_md   = result.to_markdown(md_path, symbol=symbol)
-            logger.info(f"Trade log appended to CSV: {written_csv}")
-            logger.info(f"Backtest report appended to MD: {written_md}")
+
+            written_csv = result.to_csv(csv_path)
+            written_md  = result.to_markdown(md_path)
+            logger.info(f"Trade log appended to CSV : {written_csv}")
+            logger.info(f"Backtest report updated   : {written_md}")
 
         # ── 5. Visualization ──────────────────────────────────────────────────
         logger.info("Generating visualization...")
-        fig = plot_atlas_chart(enriched_candles, symbol=symbol)
+        
+        # Pass backtest data to chart if backtest was run
+        chart_trades = backtest_result.trade_log        if backtest_result else None
+        chart_equity = backtest_result.equity_curve_data if backtest_result else None
+        
+        fig = plot_atlas_chart(
+            enriched_candles,
+            symbol=symbol,
+            executed_trades=chart_trades,
+            equity_curve=chart_equity,
+        )
         logger.info("Opening chart in browser...")
         fig.show()
 
