@@ -4,14 +4,16 @@ import numpy as np
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 from analytics.factors.factor_engine import FactorEngine
+from analytics.portfolio.optimizer import PortfolioOptimizer
 from core.logging import get_logger
 
 logger = get_logger(__name__)
 
 class FactorBacktestEngine:
-    def __init__(self, initial_balance: float = 100000.0, top_n: int = 10):
+    def __init__(self, initial_balance: float = 100000.0, top_n: int = 10, weighting_scheme: str = "equal"):
         self.initial_balance = initial_balance
         self.top_n = top_n
+        self.weighting_scheme = weighting_scheme
         self.factor_engine = FactorEngine()
         
     def run(self, start_date: date, end_date: date) -> dict[str, Any]:
@@ -108,9 +110,30 @@ class FactorBacktestEngine:
                     'turnover_pct': turnover_pct
                 })
                 
-                # Liquidate removed and size others
-                # Target value per stock
-                target_value_per_stock = portfolio_value / self.top_n if self.top_n > 0 else 0
+                # Run Portfolio Optimization
+                past_prices = {}
+                for sym in top_stocks:
+                    sym_df = all_data.get(sym)
+                    if sym_df is not None:
+                        past_data = sym_df[sym_df['date'] <= d].tail(252) # use up to 1 year of data
+                        past_prices[sym] = past_data.set_index('date')['close']
+                        
+                prices_df = pd.DataFrame(past_prices).ffill().dropna()
+                
+                factor_scores = ranks_df.head(self.top_n).set_index('symbol')['composite_score']
+                
+                optimizer = PortfolioOptimizer(prices_df, factor_scores, risk_free_rate=0.05)
+                
+                if self.weighting_scheme == "minvar":
+                    opt_res = optimizer.minimum_variance()
+                elif self.weighting_scheme == "maxsharpe":
+                    opt_res = optimizer.maximum_sharpe()
+                elif self.weighting_scheme == "riskparity":
+                    opt_res = optimizer.risk_parity()
+                else:
+                    opt_res = optimizer.equal_weight()
+                    
+                target_weights = opt_res['weights']
                 
                 # Liquidate all to cash first (simplified rebalance assuming 0 slippage/fees for now)
                 cash = portfolio_value
@@ -118,14 +141,20 @@ class FactorBacktestEngine:
                 
                 # Rebuy
                 for sym in top_stocks:
+                    weight = target_weights.get(sym, 0.0)
+                    if weight <= 0:
+                        continue
+                        
+                    target_value = portfolio_value * weight
                     sym_df = all_data.get(sym)
                     if sym_df is not None:
                         past_data = sym_df[sym_df['date'] <= d]
                         if not past_data.empty:
                             price = past_data.iloc[-1]['close']
-                            shares = target_value_per_stock / price
+                            shares = target_value / price
                             positions[sym] = shares
-                            cash -= target_value_per_stock
+                            cash -= target_value
+                            
                             
         # Final Metrics
         days = (end_date - start_date).days

@@ -118,6 +118,18 @@ def setup_cli() -> argparse.Namespace:
         action="store_true",
         help="Run a monthly rebalancing Factor strategy backtest.",
     )
+    parser.add_argument(
+        "--optimize-portfolio",
+        action="store_true",
+        help="Run the Portfolio Optimization Engine on the Top N ranked stocks.",
+    )
+    parser.add_argument(
+        "--weighting",
+        type=str,
+        default="equal",
+        choices=["equal", "minvar", "maxsharpe", "riskparity"],
+        help="Weighting scheme for portfolio optimization and factor backtest.",
+    )
     # ── Cache Management Commands ──
     parser.add_argument(
         "--sync-symbol",
@@ -146,7 +158,7 @@ def setup_cli() -> argparse.Namespace:
 
     if (args.reset_balance is not None or args.status or args.portfolio 
         or args.sync_symbol or args.sync_universe or args.sync_all or args.cache_status
-        or args.rank_universe or args.factor_backtest):
+        or args.rank_universe or args.factor_backtest or args.optimize_portfolio):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -281,7 +293,7 @@ def main() -> None:
         from analytics.backtesting.factor_backtest import FactorBacktestEngine
         end_date = date.today()
         start_date = end_date - timedelta(days=args.days)
-        engine = FactorBacktestEngine(initial_balance=args.capital or 100_000.0, top_n=args.top)
+        engine = FactorBacktestEngine(initial_balance=args.capital or 100_000.0, top_n=args.top, weighting_scheme=args.weighting)
         try:
             result = engine.run(start_date=start_date, end_date=end_date)
             logger.info("=== Factor Backtest Complete ===")
@@ -297,6 +309,46 @@ def main() -> None:
                 print(f"\nAverage Monthly Turnover: {avg_turnover:.2f}%")
         except Exception as e:
             logger.error(f"Factor backtest failed: {e}", exc_info=True)
+        sys.exit(0)
+
+    if args.optimize_portfolio:
+        from analytics.factors.factor_engine import FactorEngine
+        from analytics.portfolio.optimizer import PortfolioOptimizer
+        from analytics.portfolio.portfolio_report import generate_optimization_report
+        import pandas as pd
+        
+        engine = FactorEngine()
+        ranks = engine.rank_universe(date.today())
+        if ranks.empty:
+            logger.error("Ranking failed. Cannot optimize portfolio.")
+            sys.exit(1)
+            
+        top_stocks = ranks.head(args.top)['symbol'].tolist()
+        all_data = engine._fetch_data_batch(date.today())
+        
+        past_prices = {}
+        for sym in top_stocks:
+            sym_df = all_data.get(sym)
+            if sym_df is not None:
+                past_data = sym_df[sym_df['date'] <= date.today()].tail(252)
+                past_prices[sym] = past_data.set_index('date')['close']
+                
+        prices_df = pd.DataFrame(past_prices).ffill().dropna()
+        factor_scores = ranks.head(args.top).set_index('symbol')['composite_score']
+        
+        optimizer = PortfolioOptimizer(prices_df, factor_scores, risk_free_rate=0.05)
+        if args.weighting == "minvar":
+            opt_res = optimizer.minimum_variance()
+        elif args.weighting == "maxsharpe":
+            opt_res = optimizer.maximum_sharpe()
+        elif args.weighting == "riskparity":
+            opt_res = optimizer.risk_parity()
+        else:
+            opt_res = optimizer.equal_weight()
+            
+        out_dir = Path(__file__).parent / "research" / "output"
+        report_path = generate_optimization_report(ranks, opt_res, args.weighting, date.today(), out_dir)
+        logger.info(f"Portfolio Optimization Report generated at: {report_path}")
         sys.exit(0)
 
     # ── Handle Portfolio Mode ──────────────────────────────────────────────
