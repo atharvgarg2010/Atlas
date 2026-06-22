@@ -96,6 +96,7 @@ class DataManager:
                 "macd":        ind.macd,
                 "macd_signal": ind.macd_signal,
                 "atr_14":      ind.atr_14,
+                "ema_200":     ind.ema_200,
             })
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -265,6 +266,7 @@ class DataManager:
                 "macd": float(row["macd"]) if pd.notnull(row["macd"]) else None,
                 "macd_signal": float(row["macd_signal"]) if pd.notnull(row["macd_signal"]) else None,
                 "atr_14": float(row["atr_14"]) if pd.notnull(row["atr_14"]) else None,
+                "ema_200": float(row["ema_200"]) if pd.notnull(row["ema_200"]) else None,
             })
 
         # Upsert into PostgreSQL

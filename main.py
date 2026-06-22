@@ -102,6 +102,22 @@ def setup_cli() -> argparse.Namespace:
         default=None,
         help="Comma-separated NSE symbols for portfolio mode (e.g. HDFCBANK.NS,TCS.NS,TITAN.NS).",
     )
+    parser.add_argument(
+        "--rank-universe",
+        action="store_true",
+        help="Run the Factor Ranking Engine to rank the entire universe.",
+    )
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="Number of top stocks to select for Factor Backtest or Portfolio mode (default: 10).",
+    )
+    parser.add_argument(
+        "--factor-backtest",
+        action="store_true",
+        help="Run a monthly rebalancing Factor strategy backtest.",
+    )
     # ── Cache Management Commands ──
     parser.add_argument(
         "--sync-symbol",
@@ -129,7 +145,8 @@ def setup_cli() -> argparse.Namespace:
     args = parser.parse_args()
 
     if (args.reset_balance is not None or args.status or args.portfolio 
-        or args.sync_symbol or args.sync_universe or args.sync_all or args.cache_status):
+        or args.sync_symbol or args.sync_universe or args.sync_all or args.cache_status
+        or args.rank_universe or args.factor_backtest):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -237,15 +254,69 @@ def main() -> None:
             
         sys.exit(0)
 
+    # ── Handle Factor Ranking & Backtest ──────────────────────────────────────
+    from datetime import date
+    
+    if args.rank_universe and not args.portfolio and not args.factor_backtest:
+        from analytics.factors.factor_engine import FactorEngine
+        engine = FactorEngine()
+        ranks = engine.rank_universe(date.today())
+        if not ranks.empty:
+            logger.info("=== ATLAS FACTOR RANKING (Top 10) ===")
+            print(ranks.head(args.top)[['rank', 'symbol', 'composite_score']].to_string(index=False))
+            logger.info("=== Bottom 10 ===")
+            print(ranks.tail(args.top)[['rank', 'symbol', 'composite_score']].to_string(index=False))
+            logger.info(f"=== Factor Breakdown for {ranks.iloc[0]['symbol']} ===")
+            for k, v in ranks.iloc[0].to_dict().items():
+                print(f"  {k}: {v}")
+            
+            from analytics.factors.factor_report import generate_reasoning_report
+            out_dir = Path(__file__).parent / "research" / "output"
+            report_path = generate_reasoning_report(ranks, engine.weights, date.today(), args.top, out_dir)
+            logger.info(f"Factor Reasoning Report generated at: {report_path}")
+
+        sys.exit(0)
+
+    if args.factor_backtest:
+        from analytics.backtesting.factor_backtest import FactorBacktestEngine
+        end_date = date.today()
+        start_date = end_date - timedelta(days=args.days)
+        engine = FactorBacktestEngine(initial_balance=args.capital or 100_000.0, top_n=args.top)
+        try:
+            result = engine.run(start_date=start_date, end_date=end_date)
+            logger.info("=== Factor Backtest Complete ===")
+            print("\nStrategy Metrics:")
+            for k, v in result['strategy'].items():
+                print(f"  {k}: {v}")
+            print("\nBenchmark Metrics:")
+            for k, v in result['benchmark'].items():
+                print(f"  {k}: {v}")
+            
+            if result['turnover_stats']:
+                avg_turnover = sum(t['turnover_pct'] for t in result['turnover_stats']) / len(result['turnover_stats'])
+                print(f"\nAverage Monthly Turnover: {avg_turnover:.2f}%")
+        except Exception as e:
+            logger.error(f"Factor backtest failed: {e}", exc_info=True)
+        sys.exit(0)
+
     # ── Handle Portfolio Mode ──────────────────────────────────────────────
     if args.portfolio:
-        if not args.universe:
-            logger.error("--portfolio requires --universe  e.g. --universe HDFCBANK.NS,TCS.NS,TITAN.NS")
-            sys.exit(1)
+        if args.rank_universe:
+            from analytics.factors.factor_engine import FactorEngine
+            engine = FactorEngine()
+            ranks = engine.rank_universe(date.today())
+            if ranks.empty:
+                logger.error("Ranking failed. Cannot run portfolio.")
+                sys.exit(1)
+            symbols = ranks.head(args.top)['symbol'].tolist()
+        else:
+            if not args.universe:
+                logger.error("--portfolio requires --universe or --rank-universe")
+                sys.exit(1)
+            symbols = [s.strip().upper() for s in args.universe.split(",") if s.strip()]
 
-        symbols = [s.strip().upper() for s in args.universe.split(",") if s.strip()]
         if len(symbols) < 2:
-            logger.error("--universe must contain at least 2 symbols.")
+            logger.error("Portfolio mode requires at least 2 symbols.")
             sys.exit(1)
 
         initial_capital = args.capital if args.capital else 100_000.0

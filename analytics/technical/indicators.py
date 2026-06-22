@@ -87,6 +87,7 @@ import pandas as pd
 
 EMA_FAST = 20
 EMA_SLOW = 50
+EMA_200 = 200
 SMA_PERIOD = 20
 RSI_PERIOD = 14
 MACD_FAST = 12
@@ -304,6 +305,7 @@ class IndicatorEngine:
         # ── Trend ──────────────────────────────────────────────────────────────
         df["ema_20"] = compute_ema(close, EMA_FAST)
         df["ema_50"] = compute_ema(close, EMA_SLOW)
+        df["ema_200"] = compute_ema(close, EMA_200)
         df["sma_20"] = compute_sma(close, SMA_PERIOD)
 
         # ── Momentum ───────────────────────────────────────────────────────────
@@ -328,7 +330,7 @@ class IndicatorEngine:
         """
         # Round indicator values to 4 decimal places
         indicator_cols = [
-            "ema_20", "ema_50", "sma_20",
+            "ema_20", "ema_50", "ema_200", "sma_20",
             "rsi_14", "macd", "macd_signal", "atr_14",
         ]
         for col in indicator_cols:

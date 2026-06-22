@@ -82,3 +82,4 @@ class MarketIndicators(Base):
     macd: Mapped[float | None] = mapped_column(Float, nullable=True)
     macd_signal: Mapped[float | None] = mapped_column(Float, nullable=True)
     atr_14: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ema_200: Mapped[float | None] = mapped_column(Float, nullable=True)
