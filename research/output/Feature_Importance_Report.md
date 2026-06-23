@@ -1,7 +1,7 @@
 # Atlas Feature Importance Report
 
-**Model ID:** `alpha_model_20260622_192701.pkl`
-**Report Date:** 2026-06-22
+**Model ID:** `alpha_model_20260623_121449.pkl`
+**Report Date:** 2026-06-23
 
 ## Top 10 Predictive Features (SHAP)
 SHAP values indicate the average absolute impact each feature has on the model's prediction of future 30-day returns.

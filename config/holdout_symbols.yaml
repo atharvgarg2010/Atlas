@@ -1,0 +1,6 @@
+holdout_symbols:
+  - RELIANCE.NS      # Energy
+  - INFY.NS          # IT
+  - TRENT.NS         # Retail
+  - SHRIRAMFIN.NS    # Financials
+  - DIVISLAB.NS      # Pharma

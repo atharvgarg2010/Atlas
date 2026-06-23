@@ -1,10 +1,10 @@
 # Atlas Machine Learning Training Report
 
-**Generated:** 2026-06-22T19:27:01.372417
+**Generated:** 2026-06-23T12:14:49.202448
 
 ## Execution Summary
 - **Dataset Version:** atlas_dataset_v20260622.parquet
-- **Model Version:** alpha_model_20260622_192701.pkl
+- **Model Version:** alpha_model_20260623_121449.pkl
 - **Sample Count (Valid):** 98505
 - **Feature Count:** 18
 

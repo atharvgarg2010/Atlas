@@ -200,6 +200,12 @@ def setup_cli() -> argparse.Namespace:
         action="store_true",
         help="Generate Dataset_Coverage_Report.md.",
     )
+    # ── Phase 4.2 Commands ──
+    parser.add_argument(
+        "--reality-check",
+        action="store_true",
+        help="Run Phase 4.2 Institutional Validation & Reality Check suite.",
+    )
 
     args = parser.parse_args()
 
@@ -208,7 +214,7 @@ def setup_cli() -> argparse.Namespace:
         or args.rank_universe or args.factor_backtest or args.optimize_portfolio
         or args.build_dataset or args.validate_dataset or args.train_model
         or args.predict_universe or args.ml_backtest or args.show_db_stats
-        or args.backfill_history or args.coverage_report):
+        or args.backfill_history or args.coverage_report or args.reality_check):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -352,6 +358,18 @@ def main() -> None:
         from analytics.ml.coverage_report import CoverageReporter
         reporter = CoverageReporter()
         reporter.generate_report()
+        sys.exit(0)
+
+    # ── Handle Phase 4.2 Reality Check ────────────────────────────────────────
+    if args.reality_check:
+        from analytics.ml.reality_check import ValidationEngine
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        parquet_files = sorted(list(datasets_dir.glob("*.parquet")))
+        if not parquet_files:
+            logger.error("No dataset found to run reality check.")
+            sys.exit(1)
+        engine = ValidationEngine(parquet_files[-1])
+        engine.run_full_validation()
         sys.exit(0)
 
     # ── Handle Balance Reset ──────────────────────────────────────────────────
