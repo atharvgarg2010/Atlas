@@ -19,7 +19,7 @@ TRADES_FILE = LIVE_DIR / "trades" / "trade_ledger.json"
 @st.cache_data(ttl=3600)
 def load_json_file(file_path):
     if file_path.exists():
-        with open(file_path, "r") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
 
@@ -29,7 +29,7 @@ def load_latest_md(directory, prefix=""):
         if prefix:
             files = [f for f in files if f.name.startswith(prefix)]
         if files:
-            with open(files[0], "r") as f:
+            with open(files[0], "r", encoding="utf-8") as f:
                 return f.read()
     return "No report generated yet."
 
