@@ -200,11 +200,21 @@ def setup_cli() -> argparse.Namespace:
         action="store_true",
         help="Generate Dataset_Coverage_Report.md.",
     )
-    # ── Phase 4.2 Commands ──
     parser.add_argument(
         "--reality-check",
         action="store_true",
         help="Run Phase 4.2 Institutional Validation & Reality Check suite.",
+    )
+    # ── Phase 5.0 Commands ──
+    parser.add_argument(
+        "--feature-selection",
+        action="store_true",
+        help="Run Phase 5.0 Feature Selection Engine.",
+    )
+    parser.add_argument(
+        "--run-tournament",
+        action="store_true",
+        help="Run Phase 5.0 True Walk-Forward Model Tournament.",
     )
 
     args = parser.parse_args()
@@ -214,7 +224,8 @@ def setup_cli() -> argparse.Namespace:
         or args.rank_universe or args.factor_backtest or args.optimize_portfolio
         or args.build_dataset or args.validate_dataset or args.train_model
         or args.predict_universe or args.ml_backtest or args.show_db_stats
-        or args.backfill_history or args.coverage_report or args.reality_check):
+        or args.backfill_history or args.coverage_report or args.reality_check
+        or args.feature_selection or args.run_tournament):
         return args
 
     final_symbol = args.symbol_pos or args.symbol
@@ -370,6 +381,29 @@ def main() -> None:
             sys.exit(1)
         engine = ValidationEngine(parquet_files[-1])
         engine.run_full_validation()
+        sys.exit(0)
+
+    # ── Handle Phase 5.0 ──────────────────────────────────────────────────────
+    if args.feature_selection:
+        from analytics.ml.feature_selection import FeatureSelectionEngine
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        parquet_files = sorted(list(datasets_dir.glob("*.parquet")))
+        if not parquet_files:
+            logger.error("No dataset found to run feature selection.")
+            sys.exit(1)
+        engine = FeatureSelectionEngine(parquet_files[-1])
+        engine.run()
+        sys.exit(0)
+
+    if args.run_tournament:
+        from analytics.ml.tournament import ModelTournament
+        datasets_dir = Path(__file__).parent / "research" / "datasets"
+        parquet_files = sorted(list(datasets_dir.glob("*.parquet")))
+        if not parquet_files:
+            logger.error("No dataset found to run tournament.")
+            sys.exit(1)
+        tournament = ModelTournament(parquet_files[-1])
+        tournament.run()
         sys.exit(0)
 
     # ── Handle Balance Reset ──────────────────────────────────────────────────

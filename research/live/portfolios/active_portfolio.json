@@ -1,0 +1,91 @@
+{
+    "date": "2026-06-23",
+    "timestamp": "2026-06-23T14:15:04.629726",
+    "capital": 1000000.0,
+    "invested_capital": 981473.3936462407,
+    "cash_balance": 18526.6063537593,
+    "weighting_scheme": "maxsharpe",
+    "expected_sharpe": 0.880682394592514,
+    "positions": [
+        {
+            "symbol": "ADANIPORTS.NS",
+            "weight": 0.02,
+            "shares": 10,
+            "entry_price": 1828.0,
+            "factor_score": 87.08333333333333,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "APOLLOHOSP.NS",
+            "weight": 0.2,
+            "shares": 23,
+            "entry_price": 8444.5,
+            "factor_score": 86.35416666666667,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "ADANIENT.NS",
+            "weight": 0.020000000000000077,
+            "shares": 6,
+            "entry_price": 3038.60009765625,
+            "factor_score": 85.05208333333333,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "GRASIM.NS",
+            "weight": 0.12394475619955812,
+            "shares": 39,
+            "entry_price": 3167.19995117188,
+            "factor_score": 81.71875,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "AXISBANK.NS",
+            "weight": 0.13238114980823562,
+            "shares": 97,
+            "entry_price": 1361.0,
+            "factor_score": 81.66666666666667,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "BAJAJ-AUTO.NS",
+            "weight": 0.19999999999999998,
+            "shares": 19,
+            "entry_price": 10204.0,
+            "factor_score": 81.25,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "JSWSTEEL.NS",
+            "weight": 0.043439551332124716,
+            "shares": 33,
+            "entry_price": 1290.0,
+            "factor_score": 81.19791666666666,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "ADANIPOWER.NS",
+            "weight": 0.0402345426600815,
+            "shares": 177,
+            "entry_price": 227.149993896484,
+            "factor_score": 81.04166666666667,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "CGPOWER.NS",
+            "weight": 0.02000000000000006,
+            "shares": 21,
+            "entry_price": 949.349975585938,
+            "factor_score": 79.21875,
+            "entry_date": "2026-06-23"
+        },
+        {
+            "symbol": "NESTLEIND.NS",
+            "weight": 0.19999999999999996,
+            "shares": 141,
+            "entry_price": 1408.59997558594,
+            "factor_score": 78.69791666666667,
+            "entry_date": "2026-06-23"
+        }
+    ]
+}

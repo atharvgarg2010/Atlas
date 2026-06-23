@@ -98,6 +98,8 @@ class DatasetBuilder:
             df['ema200_dist'] = (df['close'] - df['ema_200']) / df['ema_200']
             
             df['target_return_30d'] = (df['close'].shift(-21) - df['close']) / df['close']
+            df['nifty_return_30d'] = (bench_aligned['close'].shift(-21) - bench_aligned['close']) / bench_aligned['close']
+            df['target_outperform_30d'] = np.where(df['target_return_30d'].isna(), np.nan, (df['target_return_30d'] > df['nifty_return_30d']).astype(float))
             
             processed_dfs.append(df.reset_index())
             
@@ -124,7 +126,7 @@ class DatasetBuilder:
         full_df = full_df.dropna(subset=['composite_score', 'rsi_14', 'ema200_dist', 'macd']).copy()
         
         columns_to_keep = [
-            'date', 'symbol', 'close', 'target_return_30d',
+            'date', 'symbol', 'close', 'target_return_30d', 'nifty_return_30d', 'target_outperform_30d',
             'momentum_score', 'trend_score', 'rs_score', 'volatility_score', 'liquidity_score', 'composite_score',
             'rsi_14', 'macd', 'macd_signal', 'atr_14', 'ema20_dist', 'ema50_dist', 'ema200_dist',
             'daily_volatility', 'avg_volume_30', 'ret_1m', 'ret_3m', 'ret_6m'
@@ -154,8 +156,8 @@ class DatasetBuilder:
             "date_end": final_df['date'].max().isoformat() if not final_df.empty else None,
             "rows": len(final_df),
             "valid_training_rows": valid_rows,
-            "feature_count": len([c for c in final_df.columns if c not in ['date', 'symbol', 'target_return_30d']]),
-            "features": [c for c in final_df.columns if c not in ['date', 'symbol', 'target_return_30d']]
+            "feature_count": len([c for c in final_df.columns if c not in ['date', 'symbol', 'target_return_30d', 'nifty_return_30d', 'target_outperform_30d']]),
+            "features": [c for c in final_df.columns if c not in ['date', 'symbol', 'target_return_30d', 'nifty_return_30d', 'target_outperform_30d']]
         }
         
         metadata_path = self.output_dir / f"{dataset_version}_metadata.json"

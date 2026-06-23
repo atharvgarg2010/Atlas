@@ -1,0 +1,13 @@
+{
+    "initial_capital": 1000000.0,
+    "start_date": "2026-06-23",
+    "initial_nifty": 23887.150390625,
+    "daily_snapshots": [
+        {
+            "date": "2026-06-23",
+            "portfolio_value": 1000000.0,
+            "nifty_close": 23909.150390625
+        }
+    ],
+    "current_metrics": {}
+}
